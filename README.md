@@ -1,5 +1,7 @@
 # yunhai-agent · 云海工作台 AI 后端
 
+[![CI](https://github.com/lihuazou1230/yunhai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/lihuazou1230/yunhai-agent/actions/workflows/ci.yml)
+
 云海工作台（Vue 3 前端，仓库 [`yunhai-workspace`](https://github.com/lihuazou1230/yunhai-workspace)）的 Python 后端。
 两个仓库从第十阶段开始就是**独立提交**的：前端只做消费，模型 Key 与向量库都留在这一层。
 
@@ -27,6 +29,17 @@ $env:HF_ENDPOINT = 'https://hf-mirror.com'
 
 不想装 torch 也能跑：把 `.env` 里的 `EMBEDDER` 改成 `hash`（零依赖字面哈希向量，质量降级但管线完整），
 或填 `EMBED_API_KEY` 用 OpenAI 兼容的 `/embeddings`（`EMBEDDER=api`）。
+
+### 跑检查（与 CI 同一套命令）
+
+```powershell
+.venv\Scripts\python -m ruff check .          # lint
+.venv\Scripts\python -m pytest -q             # 99 例单测：哈希向量 + 假 LLM，不下载模型
+```
+
+CI（`.github/workflows/ci.yml`）装的是 `requirements-dev.txt`——**刻意不含 torch / sentence-transformers**：
+单测全程用零依赖哈希向量与假 LLM，把 400MB+ 的运行时拖进每次流水线只会让它慢三分钟，
+而测的东西一点没变。真机要跑 bge 语义检索时仍按 `requirements.txt` 装。
 
 ## 目录结构
 

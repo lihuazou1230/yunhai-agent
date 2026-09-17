@@ -1,0 +1,45 @@
+name: CI
+
+# 与前端仓库同一套纪律：push / PR 上跑 lint + 单测。
+# 后端这条流水线刻意**不装 torch**（见 requirements-dev.txt 的说明）：
+# 单测用零依赖哈希向量与假 LLM，跑得快、也不需要下载模型。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: 安装依赖（CI 版，无 torch）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint（ruff）
+        run: ruff check .
+
+      - name: 单元测试（pytest，哈希向量 + 假 LLM）
+        run: pytest -q
+
+      - name: 服务能起来（导入即建 app，顺带验证配置无误）
+        run: |
+          EMBEDDER=hash python -c "
+          from app.main import create_app
+          app = create_app()
+          # 走 OpenAPI schema 取路由：新版 FastAPI 的 app.routes 里是 _IncludedRouter 包装对象，
+          # 既没有 .path 也拿不到子路由，直接遍历会得到一份空清单
+          paths = sorted(app.openapi()['paths'])
+          print('routes:', paths)
+          assert '/api/ask' in paths and '/api/documents' in paths
+          print('OK')
+          "
