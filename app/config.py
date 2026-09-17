@@ -60,8 +60,11 @@ class Settings(BaseSettings):
     collection: str = "yunhai_knowledge"
     top_k: int = 4
     # 语义阈值：余弦相似度，绝对量纲，由 scripts/eval_retrieval.py 校准（当前语料：0.4）
+    # 口径是**偏召回**：语义 0.4 能保住全部 16 道库内题，代价是 12 道库外题漏网 7 道。
+    # 之所以敢这么选，是端到端实测（scripts/eval_answers.py）里漏网的题全部被模型自己
+    # 说明「库里没有」，没有一条编造——阈值在这里的角色是省 token，不是最后一道防线。
     score_threshold: float = 0.4
-    # 字面 BM25 用固定尺度压缩（raw/(raw+8)），与余弦不同量纲，故单独一条阈值（校准值 0.55）
+    # 字面 BM25 用固定尺度压缩（raw/(raw+8)），与余弦不同量纲，故单独一条阈值（校准值 0.55，同样偏召回）
     lexical_score_threshold: float = 0.55
     # 命中不够上下文就拒答：低于该条数视为「检索不到」
     min_hits: int = 1

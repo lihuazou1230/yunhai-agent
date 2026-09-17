@@ -1,11 +1,15 @@
 """递归字符分块（规划 10.2）。
 
-不引 langchain，自己写一遍：按「段落 → 换行 → 中文句末标点 → 逗号 → 空格 → 字符」
-逐级降级切分，尽量在语义边界断开；超长片段最后才硬切。
+不引 langchain，自己写一遍：先按 **Markdown 小节**切，再在小节内按
+「段落 → 换行 → 中文句末标点 → 逗号 → 空格 → 字符」逐级降级切分；超长片段最后才硬切。
 
-中文分块的两个细节：
+三个细节都是被实测逼出来的：
 1. 分隔符要带中文句末标点（。！？；），否则整段中文会被当成一个"词"硬切；
-2. 切分时**标点留在前一块末尾**（用 lookbehind 切），不然引用片段读起来是断句。
+2. 切分时**标点留在前一块末尾**（用 lookbehind 切），不然引用片段读起来是断句；
+3. **小节之间不许合并**（第十阶段答案验收时被抓住）：一份手册里"AI 边界 / 快捷键 / 故障排查"
+   三个小节都很短，被合并成一块后语义被平均掉，问"深色模式下图表发白是什么原因"
+   只拿到 0.395 分（阈值 0.4）直接被拒答——而答案明明就在那一节里。
+   所以小节是硬边界，块可以小于 chunk_size，但绝不跨小节。
 """
 
 from __future__ import annotations
@@ -35,6 +39,30 @@ DEFAULT_SEPARATORS: tuple[str, ...] = (
 # 需要「标点跟随前文」的分隔符
 _KEEP_TRAILING = frozenset({"\n\n", "\n", "。", "！", "？", "；", "…"})
 
+# Markdown 标题（行首 1~6 个 # 加空格）
+_HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S")
+
+
+def split_markdown_sections(text: str) -> list[str]:
+    """按标题把小节切开；没有标题就整篇返回。
+
+    标题本身留在所属小节的**开头**（引用片段里能看到"## 常见故障排查"，
+    这对用户判断"这段是从哪来的"很有用）。
+    """
+    matches = list(_HEADING_RE.finditer(text))
+    if not matches:
+        return [text]
+    sections: list[str] = []
+    preamble = text[: matches[0].start()].strip()
+    if preamble:
+        sections.append(preamble)
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        section = text[match.start() : end].strip()
+        if section:
+            sections.append(section)
+    return sections
+
 
 def split_text(
     text: str,
@@ -42,13 +70,23 @@ def split_text(
     chunk_overlap: int,
     separators: tuple[str, ...] = DEFAULT_SEPARATORS,
 ) -> list[str]:
-    """把一段文本切成若干块，块长尽量不超过 `chunk_size`。"""
+    """把一段文本切成若干块，块长尽量不超过 `chunk_size`，且不跨 Markdown 小节。"""
     if chunk_size <= 0:
         raise ValueError("chunk_size 必须为正数")
     overlap = max(0, min(chunk_overlap, chunk_size // 2))
     stripped = text.strip()
     if not stripped:
         return []
+
+    sections = split_markdown_sections(stripped)
+    if len(sections) > 1:
+        chunks: list[str] = []
+        for section in sections:
+            # 小节内仍然重叠（同一话题的上下文接得上）；小节之间不重叠——
+            # 跨小节重复原文只会让两块都变脏，检索时还互相抢分
+            chunks.extend(_split(section, chunk_size, overlap, separators))
+        return [c for c in chunks if c]
+
     if len(stripped) <= chunk_size:
         return [stripped]
     return _split(stripped, chunk_size, overlap, separators)

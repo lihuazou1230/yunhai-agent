@@ -160,6 +160,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="检索评测与阈值校准")
     parser.add_argument("--top-k", type=int, default=4)
     parser.add_argument("--report", default=str(ROOT / "eval" / "report.md"))
+    parser.add_argument(
+        "--leak-cap",
+        type=float,
+        default=0.5,
+        help="库外漏网上限（比例）。放宽它 = 偏召回：保住更多库内题，代价是更多库外问题会带着上下文进生成侧。"
+        "端到端实测（scripts/eval_answers.py）里漏网的题全部由模型自己说明「库里没有」，因此本项目生产默认用 0.6。",
+    )
     args = parser.parse_args()
 
     runtime = Runtime.build()
@@ -186,7 +193,7 @@ def main() -> int:
         row["mode"] = MODE_LABEL[mode]
         summary_rows.append(row)
         scan = scan_threshold(results)
-        best = pick_threshold(scan, len(in_scope), len(out_scope))
+        best = pick_threshold(scan, len(in_scope), len(out_scope), leak_cap=args.leak_cap)
         calibrations[mode] = {"scan": scan, "best": best}
         print(
             f"[{mode:8}] recall@1={row['recall@1']} recall@{args.top_k}={row[f'recall@{args.top_k}']} "
@@ -204,6 +211,8 @@ def main() -> int:
         f"- 题目：库内 {len(in_scope)} 题（其中 {sum(1 for q in in_scope if q.get('paraphrase'))} 题是口语化改写，"
         "用来暴露「只会字面匹配」的短板）、库外 12 题（6 个完全无关 + 6 个同领域但库里没有）\n"
         f"- top-k：{args.top_k}\n"
+        f"- 阈值口径：库外漏网上限 {int(args.leak_cap * 100)}%（偏召回的线；"
+        "端到端答案验收里漏网的题全部由模型自己说明「库里没有」，没有一条编造）\n"
     )
 
     sections.append("\n## 一、两种策略的整体表现\n")

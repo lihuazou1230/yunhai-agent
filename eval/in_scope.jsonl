@@ -10,7 +10,7 @@
 {"question": "bge 模型查询侧要加什么前缀？", "expected_source": "RAG技术笔记.md", "hint": "为这个句子生成表示以用于检索相关文章："}
 {"question": "BM25 的 k1 和 b 取值是多少？", "expected_source": "RAG技术笔记.md", "hint": "1.5 与 0.75"}
 {"question": "流式响应为什么必须带回缓冲响应头？", "expected_source": "RAG技术笔记.md", "hint": "否则反向代理会攒成一坨"}
-{"question": "为什么我一刷新页面字就一个个往外蹦，不做这个会怎样？", "expected_source": "RAG技术笔记.md", "hint": "口语化改写：不带 X-Accel-Buffering 会被代理攒成一坨", "paraphrase": true}
-{"question": "我传一份特别大的文件上去，它得等多久、会不会把页面卡住？", "expected_source": "RAG技术笔记.md", "hint": "口语化改写：超过 2MB 转异步入库，先返回任务 ID", "paraphrase": true}
-{"question": "同一份资料传两遍，库里的东西会不会翻倍？", "expected_source": "RAG技术笔记.md", "hint": "口语化改写：内容哈希幂等，不产生重复向量", "paraphrase": true}
+{"question": "为什么我一刷新页面字就一个个往外蹦，不做这个会怎样？", "expected_source": "RAG技术笔记.md", "hint": "口语化改写：带 X-Accel-Buffering: no，否则反向代理会把输出攒成一坨", "paraphrase": true}
+{"question": "我传一份特别大的文件上去，它得等多久、会不会把页面卡住？", "expected_source": "RAG技术笔记.md", "hint": "口语化改写：超过 2MB 的文件转后台异步入库并先返回任务 ID", "paraphrase": true}
+{"question": "同一份资料传两遍，库里的东西会不会翻倍？", "expected_source": "RAG技术笔记.md", "hint": "口语化改写：文档 ID 取文件内容的 SHA-256 前 16 位，内容没变就直接跳过", "paraphrase": true}
 {"question": "换台电脑登录，为什么我的主题和标签不见了？", "expected_source": "云海工作台使用手册.md", "hint": "口语化改写：16 项偏好跟账号走，凭证留在本机", "paraphrase": true}

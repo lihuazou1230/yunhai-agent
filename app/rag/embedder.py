@@ -97,7 +97,12 @@ class BGEEmbedder:
         if self._local_dir and Path(self._local_dir).exists():
             source = self._local_dir  # 已按 hf-mirror 下载到本地就不再联网
         self._model = SentenceTransformer(source, device=self._device)
-        self._dim = int(self._model.get_sentence_embedding_dimension())
+        # sentence-transformers 6.x 把 get_sentence_embedding_dimension 改名为 get_embedding_dimension，
+        # 两个名字都留着，免得升个依赖就在每次启动时刷一行 FutureWarning
+        get_dim = getattr(self._model, "get_embedding_dimension", None) or (
+            self._model.get_sentence_embedding_dimension
+        )
+        self._dim = int(get_dim())
         return self._model
 
     @property

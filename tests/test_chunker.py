@@ -71,3 +71,62 @@ def test_invalid_chunk_size_raises():
 
     with pytest.raises(ValueError):
         split_text("甲" * 10, 0, 0)
+
+
+def test_markdown_sections_are_not_merged():
+    """小节是硬边界：三个短小节不该被合并成一块（第十阶段答案验收抓到的坑）。
+
+    合并后语义被平均掉，"深色模式下图表发白是什么原因"这类**原文就在库里**的问题
+    会因为分数差 0.005 被阈值拒答。
+    """
+    text = (
+        "# 手册\n\n"
+        "## 一、AI 边界\n\nKey 放在后端保管，前端只拿一个基地址。\n\n"
+        "## 二、快捷键\n\nCtrl+K 打开搜索，Ctrl+B 折叠侧边栏。\n\n"
+        "## 三、故障排查\n\n深色模式下图表发白：容器背景必须显式设为 transparent。\n"
+    )
+    chunks = split_text(text, 500, 80)
+    assert len(chunks) == 4  # 前言 + 三个小节，各自成块
+    troubleshooting = [c for c in chunks if "图表发白" in c]
+    assert len(troubleshooting) == 1
+    # 关键断言：故障排查那一块里不该混进别的小节正文
+    assert "Ctrl+K" not in troubleshooting[0]
+    assert "前端只拿一个基地址" not in troubleshooting[0]
+    # 标题留在所属小节里，引用片段能看出出处
+    assert troubleshooting[0].startswith("## 三、故障排查")
+
+
+def test_markdown_sections_reduce_information_dilution():
+    """同一份内容，小节切分后目标块的语义更"纯"——用块内词占比粗略验证。"""
+    section = "深色模式下图表发白是因为容器背景没有设为 transparent。" * 6
+    other = "快捷键与部署路径说明。" * 6
+    merged = split_text(f"## A\n\n{other}\n\n## B\n\n{section}", 500, 80)
+    target = [c for c in merged if "transparent" in c][0]
+    assert "快捷键与部署路径" not in target
+
+
+def test_preamble_before_first_heading_kept():
+    text = "这是没有标题的前言。\n\n## 小节\n\n小节正文。"
+    chunks = split_text(text, 500, 0)
+    assert any(c.startswith("这是没有标题的前言") for c in chunks)
+    assert any("小节正文" in c for c in chunks)
+
+
+def test_long_section_still_splits_with_overlap():
+    """小节超过 chunk_size 时仍要在小节内继续切（标题自成一块是允许的）。"""
+    section = "".join(f"第{i}句内容。" for i in range(1, 40))
+    chunks = split_text(f"## 长小节\n\n{section}", 60, 20)
+    headings = [c for c in chunks if c.startswith("## ")]
+    body = [c for c in chunks if not c.startswith("## ")]
+    assert headings == ["## 长小节"]  # 标题单独成块，正文从下一块开始
+    assert len(body) > 2
+    assert all(len(c) <= 60 for c in body)
+    # 小节内仍然重叠（重叠行为本身在 test_overlap_prefixes_next_chunk 里单独钉过）
+    assert body[0][-6:] in body[1]
+
+
+def test_text_without_headings_behaves_as_before():
+    text = "第一句话说的是甲。" * 12
+    chunks = split_text(text, 40, 0)
+    assert len(chunks) > 1
+    assert all(chunk.endswith("。") for chunk in chunks)
