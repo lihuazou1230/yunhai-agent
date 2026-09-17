@@ -1,0 +1,23 @@
+# 云海工作台 · Agent 后端（第十阶段起）
+# 装法：python -m venv .venv && .venv\Scripts\python -m pip install -r requirements.txt
+
+# --- Web 服务 ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9      # UploadFile 的 multipart 解析
+pydantic-settings>=2.4       # .env -> Settings
+
+# --- HTTP 客户端（LLM 流式 / 外部 embedding）---
+httpx>=0.27
+
+# --- 文档解析与中文语义向量 ---
+pypdf>=5.0
+numpy>=1.26
+sentence-transformers>=3.0   # 会带上 torch（CPU 版约 200MB+）
+chromadb>=0.5.5              # 嵌入式向量库
+
+# --- 评测与测试 ---
+fpdf2>=2.7                   # 生成 50 页评测用 PDF
+pytest>=8.0
+pytest-asyncio>=0.24
+ruff>=0.6

@@ -1,0 +1,27 @@
+[project]
+name = "yunhai-agent"
+version = "0.1.0"
+description = "云海工作台 AI 后端：RAG 知识库 + Agent 内核（第十阶段起，独立仓库）"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+exclude = [".venv", "data", "models", "build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RET", "PTH"]
+ignore = [
+  "E501",   # 行长交给 formatter
+  "B008",   # FastAPI 的 Depends/File 默认值就是写在签名里的
+  "SIM108", # 三元表达式不一定更可读
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PTH", "B011"]
+"scripts/*" = ["PTH"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]

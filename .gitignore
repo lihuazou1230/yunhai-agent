@@ -1,0 +1,22 @@
+# 机密与本地数据 —— 一律不进 Git
+.env
+.venv/
+data/
+models/
+models_*/
+*.log
+_setup.log
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
