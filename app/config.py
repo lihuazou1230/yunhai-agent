@@ -61,8 +61,8 @@ class Settings(BaseSettings):
     top_k: int = 4
     # 语义阈值：余弦相似度，绝对量纲，由 scripts/eval_retrieval.py 校准（当前语料：0.4）
     score_threshold: float = 0.4
-    # 字面 BM25 用固定尺度压缩（raw/(raw+8)），与余弦不同量纲，故单独一条阈值（校准值 0.6）
-    lexical_score_threshold: float = 0.6
+    # 字面 BM25 用固定尺度压缩（raw/(raw+8)），与余弦不同量纲，故单独一条阈值（校准值 0.55）
+    lexical_score_threshold: float = 0.55
     # 命中不够上下文就拒答：低于该条数视为「检索不到」
     min_hits: int = 1
     # 兜底三模式：refuse（默认拒答）/ bare（裸答并标注）/ web（联网搜索，阶段后置）

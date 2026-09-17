@@ -289,7 +289,7 @@ def _conclusion(semantic: dict, lexical: dict, calibrations: dict, top_k: int) -
             lines.append(
                 f"- **口语化改写题**（{semantic['改写题数']} 题，不复用文档原词）：语义 recall@1 "
                 f"{para_semantic} vs 字面 {para_lexical}——**语义模型连改写题也没赢**。"
-                "这与直觉相反，原因大概率是语料太小（22 块）：小块语料里改写题与文档仍共享"
+                "这与直觉相反，原因大概率是语料太小：小块语料里改写题与文档仍共享"
                 "「两份」「主题」「标签」这类实词，BM25 抓得住；而 bge-small 在短句上的分数被压在"
                 "0.4~0.6，区分度本就有限。**结论是当前语料下字面方案更划算**，"
                 "语义模型的价值要在几十页以上的语料上重测（脚本已就位，换语料重跑即可）。"
@@ -329,7 +329,7 @@ def _conclusion(semantic: dict, lexical: dict, calibrations: dict, top_k: int) -
         "（它更抗改写与跨段关联，只是这份小语料量不出来），BM25 常驻用于对比与无模型环境。"
     )
     lines.append(
-        "- **本次评测的局限**：语料只有 3 篇 / 22 块、题目 16 道，置信区间很宽；"
+        "- **本次评测的局限**：语料只有 3 篇、题目 16 道，置信区间很宽；"
         "把 50 页 PDF（`scripts/make_eval_pdf.py` 产出）灌进去会更接近真实规模。"
     )
     return "\n".join(lines) + "\n"
