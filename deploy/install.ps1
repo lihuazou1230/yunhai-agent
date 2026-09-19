@@ -50,6 +50,8 @@
     -PythonExe C:\...\python.exe   指定已装好的 Python（给了就不下载）
     -PythonVersion 3.12.10        要下载安装的 Python 版本（3.10~3.12；3.13+ 不支持 2012 R2）
     -PythonTargetDir C:\Python312 安装到的目录（仅下载安装时用）
+    -PipIndexUrl https://pypi.tuna.tsinghua.edu.cn/simple
+                                  换 pip 源（国内服务器建议给；默认 pypi.org 可能慢到像卡死）
     -LlmApiKey / -LlmBaseUrl / -LlmModel              生成侧（默认 DeepSeek）
     -EmbedApiKey / -EmbedApiBaseUrl / -EmbedApiModel  向量侧（默认 SiliconFlow bge-m3）
       提示：Key 这几个参数**能不用就不用** —— 省掉时脚本会交互式提示你粘贴，那才是推荐路径。
@@ -70,6 +72,7 @@ param(
     [string]$PythonExe,
     [string]$PythonVersion = '3.12.10',
     [string]$PythonTargetDir = 'C:\Python312',
+    [string]$PipIndexUrl,
     [string]$LlmApiKey,
     [string]$LlmBaseUrl = 'https://api.deepseek.com/v1',
     [string]$LlmModel = 'deepseek-chat',
@@ -240,7 +243,7 @@ Python 安装失败，退出码 $($proc.ExitCode)（日志：$logPath）。
 }
 
 function Install-Venv {
-    param([string]$Python, [string[]]$PythonArgs, [string]$Dir, [switch]$Recreate)
+    param([string]$Python, [string[]]$PythonArgs, [string]$Dir, [string]$IndexUrl, [switch]$Recreate)
 
     $venvDir = Join-Path $Dir '.venv'
     $venvPython = Join-Path $venvDir 'Scripts\python.exe'
@@ -261,9 +264,29 @@ function Install-Venv {
 
     $req = Join-Path $Dir 'requirements-server.txt'
     if (-not (Test-Path $req)) { throw "找不到 $req（包不完整）" }
-    Write-Info '安装依赖（不含 torch，约 2~5 分钟）...'
-    & $venvPython -m pip install --upgrade pip --quiet
-    & $venvPython -m pip install -r $req
+
+    # pip 公共参数。为什么要放宽超时/重试：国内云主机访问 pypi.org 经常慢到"看着像卡死"，
+    # 默认 15 秒超时会让它反复重试、进度长时间不动。
+    $common = New-Object System.Collections.Generic.List[string]
+    $common.Add('--disable-pip-version-check')
+    $common.Add('--timeout'); $common.Add('60')
+    $common.Add('--retries'); $common.Add('5')
+    if ($IndexUrl) {
+        $common.Add('-i'); $common.Add($IndexUrl)
+        Write-Info "pip 源：$IndexUrl"
+    } else {
+        Write-Info 'pip 源：默认 pypi.org'
+        Write-Info '    （国内服务器上可能很慢；Ctrl+C 后加 -PipIndexUrl https://pypi.tuna.tsinghua.edu.cn/simple 重跑会快很多）'
+    }
+    $pipArgs = $common.ToArray()
+
+    # 刻意不用 --quiet：这里一等就是几分钟，没有输出就没法判断是"在下载"还是"卡死了"
+    Write-Info '升级 pip（约 10~60 秒）...'
+    & $venvPython -m pip install --upgrade pip @pipArgs
+    if ($LASTEXITCODE -ne 0) { throw "升级 pip 失败（退出码 $LASTEXITCODE）" }
+
+    Write-Info '安装依赖（不含 torch，约 2~10 分钟；下面会逐条打印下载进度）...'
+    & $venvPython -m pip install -r $req @pipArgs
     if ($LASTEXITCODE -ne 0) { throw "pip install 失败（退出码 $LASTEXITCODE）" }
     Write-Ok '依赖安装完成'
     return $venvPython
@@ -676,7 +699,7 @@ function Invoke-Deploy {
     }
     Write-Ok '应用文件已同步（data\ 与 logs\ 保留）'
 
-    $venvPython = Install-Venv -Python $python.Exe -PythonArgs $python.Args -Dir $InstallDir -Recreate:$Force
+    $venvPython = Install-Venv -Python $python.Exe -PythonArgs $python.Args -Dir $InstallDir -IndexUrl $PipIndexUrl -Recreate:$Force
 
     Write-Step '3/8 写 .env'
     $existing = Join-Path $InstallDir '.env'
