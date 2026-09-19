@@ -127,6 +127,7 @@ async def run_case(runtime: Runtime, client: FakeClient, question: str, *, max_r
         "tool_calls": [data for kind, data in events if kind == "tool_call"],
         "tool_results": [data for kind, data in events if kind == "tool_result"],
         "citations": [data for kind, data in events if kind == "citation"],
+        "errors": [data for kind, data in events if kind == "error"],
         "done": done,
         "resumes": resumes,
         "latency_ms": int((time.perf_counter() - started) * 1000),
@@ -191,6 +192,8 @@ async def main() -> int:
             f"引用 {len(case['citations'])} 条 · {case['latency_ms']}ms"
         )
         print(f"  回答：{' '.join(case['answer'].split())[:90]}")
+        for error in case["errors"]:
+            print(f"  ⚠️ 错误事件：{error['code']} {error['message'][:160]}")
 
     # ---- 验收判定 ----
     verdicts: list[dict] = []
@@ -333,6 +336,8 @@ async def main() -> int:
         if case["citations"]:
             cited = ", ".join(f"{c['index']}.{c['source']}" for c in case["citations"])
             lines.append(f"- 引用：{cited}\n")
+        for error in case["errors"]:
+            lines.append(f"- ⚠️ 错误事件：`{error['code']}` {error['message'][:200]}\n")
         lines.append(f"\n> {' '.join(case['answer'].split())[:400] or '（无输出）'}\n")
 
     report_path = Path(args.report)

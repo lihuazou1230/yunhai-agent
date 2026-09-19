@@ -37,10 +37,13 @@ class StubLLM(LLMClient):
         pieces: tuple[str, ...] = ("分块默认 ", "500 ", "字符。", "[1]"),
         fail: str = "",
         script: list[dict] | None = None,
+        fail_calls: int = 0,
     ):
         self.pieces = list(pieces)
         self.fail = fail
         self.script = list(script or [])
+        # 前 N 次调用直接失败（模拟 provider 偶发 5xx），用来验证"没吐字就重试一次"
+        self.fail_calls = fail_calls
         self.calls: list[dict] = []
 
     @property
@@ -60,6 +63,9 @@ class StubLLM(LLMClient):
 
     async def stream_with_tools(self, messages, tools, result):  # type: ignore[override]
         self.calls.append({"messages": messages, "tools": tools})
+        if self.fail_calls > 0:
+            self.fail_calls -= 1
+            raise LLMError("stub 偶发失败")
         if self.fail == "boom":
             raise LLMError("stub 生成失败")
 

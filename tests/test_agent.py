@@ -302,10 +302,16 @@ async def test_client_tool_pauses_then_resume_completes_the_turn(settings):
     resumed = parse_frames(frames)
     resumed_done = resumed[-1][1]
     assert resumed_done["status"] == "ok" and resumed_done["kind"] == "tool"
-    assert "已经帮你加好" in resumed_done["citations"] or True  # citations 与工具无关
+    # 客户端工具也走统一的 tool_result 事件（前端不用自己拿 done.tools 补一条）
+    client_result = next(data for kind, data in resumed if kind == "tool_result")
+    assert client_result["ok"] is True and "id=t1" in client_result["summary"]
     message = runtime.sessions.get_session(resumed_done["session_id"])["messages"][-1]
     assert message["role"] == "assistant" and "交周报" in message["content"]
-    assert message["meta"]["tools"][0]["name"] == "task_crud"
+    tools = message["meta"]["tools"]
+    assert tools[0]["name"] == "task_crud"
+    # 参数与摘要都落进 meta：会话历史上工具标签才画得出来
+    assert tools[0]["arguments"]["title"] == "交周报"
+    assert "id=t1" in tools[0]["summary"]
     # 前端回传的观察结果确实进了模型上下文
     assert any("id=t1" in str(m.get("content")) for m in runtime.llm.calls[1]["messages"])
 
@@ -417,6 +423,17 @@ async def test_llm_failure_surfaces_error_event(settings):
     events = await collect(runtime, "问题")
     assert events[0][0] == "error"
     assert events[0][1]["code"] == "llm_error"
+
+
+async def test_transient_llm_failure_is_retried_once(settings):
+    """provider 偶发 5xx/超时不该直接把用户打断：一个字都没吐出来时重试一次。"""
+    llm = StubLLM(script=[{"content": "重试之后的答案"}], fail_calls=1)
+    runtime = Runtime.build(settings, llm=llm)
+    events = await collect(runtime, "问题")
+    assert not [data for kind, data in events if kind == "error"]
+    assert "重试之后的答案" in "".join(data["text"] for kind, data in events if kind == "token")
+    assert events[-1][1]["status"] == "ok"
+    assert len(llm.calls) == 2  # 第一次失败、第二次成功
 
 
 async def test_citations_are_renumbered_across_multiple_searches(settings, sample_md):

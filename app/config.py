@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     agent_max_tool_failures: int = 3
     # 回填给模型的历史消息条数（**已剔除轻量闲聊**，见 11.4）
     agent_history_messages: int = 6
+    # 一轮 LLM 调用失败（且一个字都没吐出来）时的重试次数与间隔：
+    # provider 偶发 5xx/超时很常见，直接抛给用户看"生成失败"太脆
+    agent_llm_retries: int = 1
+    agent_llm_retry_delay_s: float = 0.8
     # 待续跑状态（等前端执行 client 工具）保留多久
     agent_run_ttl_s: int = 3600
 

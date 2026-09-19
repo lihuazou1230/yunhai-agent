@@ -100,11 +100,26 @@ class AgentLoop:
             run.messages.append(
                 {"role": "tool", "tool_call_id": item["tool_call_id"], "content": observation or "（无返回内容）"}
             )
-            run.tools.append({"id": item["tool_call_id"], "name": name, "ok": ok, "executor": "client", "error": error})
+            run.tools.append(
+                {
+                    "id": item["tool_call_id"],
+                    "name": name,
+                    "ok": ok,
+                    "executor": "client",
+                    "arguments": (call or {}).get("arguments") or {},
+                    "summary": summary,
+                    "error": error,
+                }
+            )
             if ok:
                 run.failures[name] = 0
             else:
                 run.failures[name] = run.failures.get(name, 0) + 1
+            # 客户端工具也要发 tool_result：前端因此有**统一**的"工具结束"事件，
+            # 不用自己拿 done.tools 去补一条（它确实是工具，只是执行地点在工作台里）
+            yield sse.tool_result_event(
+                item["tool_call_id"], name, ok, summary=summary if ok else "", error=error
+            )
         run.pending = []
 
         async for frame in self._drive(run, started, tools_enabled=True):
@@ -121,16 +136,29 @@ class AgentLoop:
                 return
 
             turn = TurnResult()
-            try:
-                specs = self._registry.specs() if tools_enabled else None
-                async for piece in self._llm.stream_with_tools(run.messages, tools=specs, result=turn):
-                    run.content += piece
-                    yield sse.token_event(piece)
-            except AgentError as exc:
-                yield sse.error_event(exc.message, exc.code)
-                return
-            except Exception as exc:  # noqa: BLE001 - 流一旦开始就不能抛
-                yield sse.error_event(f"生成失败：{exc}", "internal_error")
+            specs = self._registry.specs() if tools_enabled else None
+            failure: AgentError | None = None
+            for attempt in range(self._settings.agent_llm_retries + 1):
+                try:
+                    async for piece in self._llm.stream_with_tools(run.messages, tools=specs, result=turn):
+                        run.content += piece
+                        yield sse.token_event(piece)
+                    failure = None
+                    break
+                except AgentError as exc:
+                    failure = exc
+                    # 只在"一个字都没吐出来"时重试：已经流出去的文本没法撤回，重试会把答案拼两遍
+                    if attempt < self._settings.agent_llm_retries and not turn.content:
+                        turn.partial.clear()
+                        turn.tool_calls.clear()
+                        await asyncio.sleep(self._settings.agent_llm_retry_delay_s)
+                        continue
+                    break
+                except Exception as exc:  # noqa: BLE001 - 流一旦开始就不能抛
+                    yield sse.error_event(f"生成失败：{exc}", "internal_error")
+                    return
+            if failure is not None:
+                yield sse.error_event(failure.message, failure.code)
                 return
 
             run.tokens += turn.total_tokens or _estimate_tokens(run.messages, run.content)
