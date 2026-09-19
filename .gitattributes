@@ -1,0 +1,5 @@
+# Windows 批处理脚本一律 CRLF。
+# cmd.exe 解析「UTF-8 + 仅 LF」的 .bat 会把整段脚本切错行：
+# 中文变乱码、报一堆「'st' 不是内部或外部命令」，脚本静默失效（run.bat 就踩过这个坑）。
+*.bat text eol=crlf
+*.cmd text eol=crlf
