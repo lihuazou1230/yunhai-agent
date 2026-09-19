@@ -2,6 +2,8 @@
 
 启动命令见 README：`uvicorn app.main:app --reload --port 8000`。
 CORS 开发期只放行 localhost 与 Tauri WebView 的 origin（规划 10.1）。
+
+挂在子路径下（IIS 子应用 /yhai）时设 `AGENT_URL_PREFIX=/yhai`，见 app/url_prefix.py。
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from fastapi.responses import JSONResponse
 from app.api import ask, documents, health, sessions
 from app.errors import AgentError
 from app.runtime import VERSION, get_runtime
+from app.url_prefix import UrlPrefixMiddleware, normalize_prefix
 
 
 @asynccontextmanager
@@ -42,6 +45,13 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # 挂在子路径下时（IIS 子应用 /yhai）先剥前缀再进路由。
+    # 后加的中间件在外层，所以它包住 CORS：这样连预检请求也走的是剥完前缀的路径。
+    # 前缀为空时是空操作，本地开发不受影响。
+    prefix = normalize_prefix(settings.agent_url_prefix)
+    if prefix:
+        app.add_middleware(UrlPrefixMiddleware, prefix=prefix)
 
     @app.exception_handler(AgentError)
     async def agent_error_handler(_: Request, exc: AgentError) -> JSONResponse:

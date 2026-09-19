@@ -22,6 +22,7 @@ from app.rag.pipeline import AskPipeline, KnowledgeBase
 from app.rag.retriever import Retriever
 from app.rag.store import VectorStore
 from app.sessions import SessionStore
+from app.url_prefix import normalize_prefix
 
 VERSION = "0.2.0"
 
@@ -90,13 +91,22 @@ class Runtime:
         return runtime
 
     def health(self) -> dict:
+        # embedder_model 对两种形态都报出来：服务器形态走 api（bge-m3），
+        # 自检时看不到模型名会以为配置没生效
+        if self.embedder.name == "bge":
+            embedder_model = self.settings.embed_model
+        elif self.embedder.name == "api":
+            embedder_model = self.settings.embed_api_model
+        else:
+            embedder_model = ""
         return {
             "status": "ok",
             "version": VERSION,
             "llm_configured": self.llm.configured,
             "llm_model": self.settings.llm_model if self.llm.configured else "",
             "embedder": self.embedder.name,
-            "embedder_model": self.settings.embed_model if self.embedder.name == "bge" else "",
+            "embedder_model": embedder_model,
+            "url_prefix": normalize_prefix(self.settings.agent_url_prefix),
             "degraded_reason": self.degraded_reason,
             "chunk_size": self.settings.chunk_size,
             "chunk_overlap": self.settings.chunk_overlap,

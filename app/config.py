@@ -102,6 +102,12 @@ class Settings(BaseSettings):
         "http://localhost:4173,http://127.0.0.1:4173,"
         "http://tauri.localhost,tauri://localhost"
     )
+    # 挂在子路径下时的前缀（如 IIS 子应用 /yhai）。默认空 = 不剥前缀，本地开发零影响。
+    # 为什么需要它：IIS 的 HttpPlatformHandler 是把请求原样转给子进程的，
+    # 路径里带着 /yhai 前缀，而本服务的路由是 /api/* —— 不剥就是一片 404。
+    # 环境变量名 = `AGENT_URL_PREFIX`（pydantic-settings 按**字段名**取环境变量，
+    # 字段叫 agent_url_prefix 才对得上，写成 url_prefix 会去找 URL_PREFIX）。
+    agent_url_prefix: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

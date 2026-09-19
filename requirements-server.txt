@@ -1,0 +1,25 @@
+# 云海工作台 · Agent 后端 —— **服务器形态**依赖（不含 torch）
+# 装法：python -m venv .venv && .venv\Scripts\python -m pip install -r requirements-server.txt
+#
+# 与 requirements.txt 的唯一区别：**去掉 sentence-transformers**。
+# 它会拖 torch（CPU 版 200MB+，装完约 2GB），而 torch 官方只支持 Win10+，
+# 老服务器（Windows Server 2012 R2）上大概率既装不上也跑不起来。
+# 服务器形态改用 EMBEDDER=api（SiliconFlow 的 bge-m3，走 HTTPS），本机因此不需要 torch。
+#
+# 注意：换了 embedding 模型 = 换了向量维度，**不能复用本机 data/ 里的向量库**
+# （本机 bge-small-zh 是 512 维，bge-m3 是 1024 维，维度不一致会直接报错）。
+# 服务器上是干净起步，重新上传文档即可；本机的库里那几份样本在 eval/docs/ 下。
+
+# --- Web 服务 ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9      # UploadFile 的 multipart 解析
+pydantic-settings>=2.4       # .env -> Settings
+
+# --- HTTP 客户端（LLM 流式 / 外部 embedding）---
+httpx>=0.27
+
+# --- 文档解析与向量库（不再需要 sentence-transformers / torch）---
+pypdf>=5.0
+numpy>=1.26
+chromadb>=0.5.5              # 嵌入式向量库
