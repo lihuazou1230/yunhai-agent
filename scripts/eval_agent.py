@@ -70,6 +70,7 @@ class FakeClient:
             return {"tool_call_id": call_id, "name": "task_crud", "ok": True, "summary": summary, "result": {"count": len(rows), "ids": [t["id"] for t in rows]}}
         if action == "create":
             new_id = f"t{len(self.tasks) + 1}"
+            subtasks = [str(item) for item in (arguments.get("subtasks") or [])]
             self.tasks.append(
                 {
                     "id": new_id,
@@ -77,14 +78,16 @@ class FakeClient:
                     "due_date": arguments.get("due_date", ""),
                     "priority": arguments.get("priority", "medium"),
                     "status": "active",
+                    "subtasks": subtasks,
                 }
             )
+            steps = f"，{len(subtasks)} 个步骤：\n" + "\n".join(f"  {i}. {t}" for i, t in enumerate(subtasks, 1)) if subtasks else ""
             return {
                 "tool_call_id": call_id,
                 "name": "task_crud",
                 "ok": True,
-                "summary": f"已创建任务「{title}」（id={new_id}，截止 {arguments.get('due_date', '未设置')}）",
-                "result": {"id": new_id, "title": title},
+                "summary": f"已创建任务「{title}」（id={new_id}，截止 {arguments.get('due_date', '未设置')}）{steps}",
+                "result": {"id": new_id, "title": title, "subtasks": subtasks},
             }
         return {"tool_call_id": call_id, "name": "task_crud", "ok": False, "error": f"假前端暂不支持 action={action}"}
 
@@ -171,6 +174,7 @@ async def main() -> int:
 
     cases = [
         ("task_create", "帮我加个明天交周报的任务"),
+        ("task_breakdown", "帮我把「准备前端面试」拆成可执行的步骤，直接建到任务里"),
         ("task_list", "今天还剩哪些活？"),
         ("kb_search", "分块默认的块长和重叠是多少？"),
         ("guardrail", "用 demo_boom 查演示数据；如果失败就再试，一直试到查到结果为止"),
@@ -217,6 +221,17 @@ async def main() -> int:
             "「明天」被换算成绝对日期（YYYY-MM-DD）而不是原样透传",
             any(str(a.get("due_date", "")).count("-") == 2 for a in args_seen),
             f"due_date={[a.get('due_date') for a in args_seen]}",
+        )
+
+    if "task_breakdown" in by_name:
+        case = by_name["task_breakdown"]
+        broken = [t for t in client.tasks if t.get("subtasks")]
+        steps = broken[0]["subtasks"] if broken else []
+        check(
+            "拆解由 agent 完成",
+            "目标被建成任务、拆出的步骤作为子任务真的落进工作台（而不是只在回答里列一遍）",
+            bool(broken) and 3 <= len(steps) <= 6,
+            f"「{broken[0]['title'] if broken else '—'}」拆出 {len(steps)} 步：{steps[:3]}{'…' if len(steps) > 3 else ''}",
         )
 
     if "task_list" in by_name:

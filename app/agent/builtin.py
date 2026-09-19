@@ -77,6 +77,20 @@ TASK_CRUD_PARAMETERS: dict[str, Any] = {
             "enum": ["all", "today", "active", "completed", "overdue"],
             "description": "list 用：筛选范围，默认 all（未归档的全部任务）",
         },
+        "subtasks": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "拆解出的执行步骤。用户说「把 X 拆成可执行的步骤/子任务」时用："
+                "先 create 一条标题是目标本身的任务，再把 3~6 条步骤放进这里——"
+                "每条动词开头、能独立完成。update 时表示往已有任务上加步骤（见 subtasks_mode）"
+            ),
+        },
+        "subtasks_mode": {
+            "type": "string",
+            "enum": ["append", "replace"],
+            "description": "update 时如何处置已有子任务：append（默认，追加）或 replace（整体替换）",
+        },
     },
     "required": ["action"],
 }
@@ -170,6 +184,8 @@ def task_crud_tool() -> Tool:
             "读写用户工作台里的任务：查询（list）、新建（create）、修改（update）、"
             "完成/取消完成（complete/uncomplete）、删除（delete）、归档（archive）。"
             "用户提到「我的任务/待办/今天还剩什么/帮我加一条」都用它。"
+            "**拆解也用它**：用户说「把 X 拆成可执行的步骤」时，create 一条标题是 X 的任务，"
+            "把拆出的 3~6 条步骤放进 `subtasks`——不要把步骤只写在回答里，拆解结果要真的落进工作台。"
             "任务数据只存在于用户的工作台里，不调用它你看不到任何任务。"
         ),
         parameters=TASK_CRUD_PARAMETERS,

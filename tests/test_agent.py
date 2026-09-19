@@ -123,6 +123,32 @@ def test_validate_arguments_covers_types_enum_date_and_unknown_keys():
     assert "不认识的参数" in validate_arguments(schema, {"action": "list", "nope": 1})[0]
 
 
+def test_task_crud_schema_supports_breakdown_subtasks():
+    """拆解并从任务页搬到 agent：task_crud 必须能一次建出「目标 + 步骤」。"""
+    from app.agent.builtin import task_crud_tool
+
+    schema = task_crud_tool().parameters
+    assert "subtasks" in schema["properties"]
+    assert schema["properties"]["subtasks"]["items"]["type"] == "string"
+    assert validate_arguments(
+        schema,
+        {"action": "create", "title": "准备前端面试", "subtasks": ["整理项目经历", "刷算法题"]},
+    ) == []
+    assert "需要数组" in validate_arguments(schema, {"action": "create", "subtasks": "整理经历"})[0]
+    assert "只能是 append/replace" in validate_arguments(
+        schema, {"action": "update", "subtasks": ["a"], "subtasks_mode": "乱写"}
+    )[0]
+
+
+def test_agent_prompt_tells_it_to_break_goals_into_workspace_subtasks():
+    from app.agent.prompts import build_agent_system_prompt
+
+    prompt = build_agent_system_prompt("refuse")
+    assert "subtasks" in prompt
+    assert "拆解" in prompt
+    assert "落进工作台" in prompt  # 不许只在回答里列步骤
+
+
 async def test_search_knowledge_merges_semantic_and_lexical(settings, sample_md):
     """工具层做两路并集：语义漏掉的题字面能召回（第十阶段实测两者互补）。"""
     runtime = Runtime.build(settings, llm=StubLLM())
