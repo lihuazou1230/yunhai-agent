@@ -242,6 +242,18 @@ Python 安装失败，退出码 $($proc.ExitCode)（日志：$logPath）。
     return $null
 }
 
+function Read-SecretFromConsole {
+    <#
+      读密钥用 Read-Host -AsSecureString：普通 Read-Host 会把粘贴的内容**明文回显**在屏幕上，
+      RDP 截图 / 投屏 / 录屏都会把它带走（实测踩过：两个 Key 就这么被打在了屏幕上）。
+      这里返回值仍是明文（要写进 .env），但不再回显；直接回车 = 返回空串（= 稍后手填 .env）。
+    #>
+    param([string]$Prompt)
+    $secure = Read-Host $Prompt -AsSecureString
+    $cred = New-Object System.Net.NetworkCredential('', $secure)
+    return $cred.Password
+}
+
 function Install-Venv {
     param([string]$Python, [string[]]$PythonArgs, [string]$Dir, [string]$IndexUrl, [switch]$Recreate)
 
@@ -257,7 +269,8 @@ function Install-Venv {
         Write-Ok "复用已有 venv（$venvDir）"
     } else {
         Write-Info "创建 venv：$venvDir"
-        & $Python @PythonArgs -m venv $venvDir
+        # 一律 | Out-Host：本函数的返回值必须干净（见函数末尾那条注释）
+        & $Python @PythonArgs -m venv $venvDir | Out-Host
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $venvPython)) { throw "创建 venv 失败（退出码 $LASTEXITCODE）" }
         Write-Ok 'venv 创建完成'
     }
@@ -281,14 +294,20 @@ function Install-Venv {
 
     # 刻意不用 --quiet：这里一等就是几分钟，没有输出就没法判断是"在下载"还是"卡死了"
     Write-Info '升级 pip（约 10~60 秒）...'
-    & $venvPython -m pip install --upgrade pip @pipArgs
+    & $venvPython -m pip install --upgrade pip @pipArgs | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "升级 pip 失败（退出码 $LASTEXITCODE）" }
 
     Write-Info '安装依赖（不含 torch，约 2~10 分钟；下面会逐条打印下载进度）...'
-    & $venvPython -m pip install -r $req @pipArgs
+    & $venvPython -m pip install -r $req @pipArgs | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "pip install 失败（退出码 $LASTEXITCODE）" }
     Write-Ok '依赖安装完成'
-    return $venvPython
+
+    # ⚠ 这里**刻意不返回 python 路径**：本函数内部跑的是原生命令（venv / pip），
+    # 它们的 stdout 会进 PowerShell 的成功流 —— 一旦调用方写成 `$py = Install-Venv ...`，
+    # 返回值就变成「pip 的每行输出 + 路径」拼成的数组，随后 Start-Process 拿它当 exe
+    # 路径用，直接报「系统无法运行此命令：系统找不到指定的文件」，而且是在依赖都装完之后
+    # 才炸，非常迷惑（实测就是这么翻的车）。所以：原生输出一律 | Out-Host，
+    # 返回值由调用方自己拼，并当场校验存在。
 }
 
 function New-EnvFile {
@@ -369,8 +388,12 @@ function Test-AgentDirectly {
       都能在这里暴露，省得挂上 IIS 之后对着 502 猜。
     #>
     param([string]$Dir, [string]$VenvPython, [string]$Prefix, [int]$AgentPort)
-    $logOut = Join-Path $env:TEMP 'yunhai-agent-selfcheck.log'
-    $logErr = Join-Path $env:TEMP 'yunhai-agent-selfcheck.err.log'
+    # 日志写进应用的 logs\（一定存在且可写）。不要写 %TEMP%：个别服务器环境下
+    # Start-Process 的重定向会以「系统找不到指定的文件」告败，排查起来毫无线索。
+    $selfCheckDir = Join-Path $Dir 'logs'
+    if (-not (Test-Path $selfCheckDir)) { New-Item -ItemType Directory -Path $selfCheckDir -Force | Out-Null }
+    $logOut = Join-Path $selfCheckDir 'selfcheck.log'
+    $logErr = Join-Path $selfCheckDir 'selfcheck.err.log'
 
     Write-Info "临时起一次 127.0.0.1:$AgentPort 探活..."
     $proc = Start-Process -FilePath $VenvPython `
@@ -698,7 +721,10 @@ function Invoke-Deploy {
     }
     Write-Ok '应用文件已同步（data\ 与 logs\ 保留）'
 
-    $venvPython = Install-Venv -Python $python.Exe -PythonArgs $python.Args -Dir $InstallDir -IndexUrl $PipIndexUrl -Recreate:$Force
+    Install-Venv -Python $python.Exe -PythonArgs $python.Args -Dir $InstallDir -IndexUrl $PipIndexUrl -Recreate:$Force
+    $venvPython = Join-Path $InstallDir '.venv\Scripts\python.exe'
+    if (-not (Test-Path $venvPython)) { throw "venv 里的 python 没找到：$venvPython（可加 -Force 重建 venv 重跑）" }
+    Write-Ok "venv python：$venvPython"
 
     Write-Step '3/8 写 .env'
     $existing = Join-Path $InstallDir '.env'
@@ -711,12 +737,12 @@ function Invoke-Deploy {
     if (-not $LlmApiKey) { $LlmApiKey = & $fromEnvFile 'LLM_API_KEY' }
     if (-not $LlmApiKey) {
         Write-Warn '没给 -LlmApiKey，也没读到旧的 .env'
-        $LlmApiKey = Read-Host '    请粘贴 DeepSeek（或其它 OpenAI 兼容）API Key（留空=稍后手填 .env）'
+        $LlmApiKey = Read-SecretFromConsole '    请粘贴 DeepSeek（或其它 OpenAI 兼容）API Key（留空=稍后手填 .env）'
     }
     if (-not $EmbedApiKey) { $EmbedApiKey = & $fromEnvFile 'EMBED_API_KEY' }
     if (-not $EmbedApiKey) {
         Write-Warn '没给 -EmbedApiKey，也没读到旧的 .env'
-        $EmbedApiKey = Read-Host '    请粘贴 SiliconFlow API Key（bge-m3 向量用；留空=稍后手填 .env）'
+        $EmbedApiKey = Read-SecretFromConsole '    请粘贴 SiliconFlow API Key（bge-m3 向量用；留空=稍后手填 .env）'
     }
     $envPath = New-EnvFile -Dir $InstallDir -Recreate:$Force -Values @{
         AppName = $AppName
