@@ -3,3 +3,8 @@
 # 中文变乱码、报一堆「'st' 不是内部或外部命令」，脚本静默失效（run.bat 就踩过这个坑）。
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# 另外一条约定（git 属性管不了，靠编辑器和 deploy\build-agent-package.ps1 兜）：
+# 含中文的 .ps1 必须存成 **UTF-8 with BOM**。Windows PowerShell 4.0/5.1 会把无 BOM 的
+# .ps1 按系统 ANSI(GBK) 读，中文变乱码、甚至字符串引号被吃掉导致解析失败
+# （build-deploy-package.ps1 就踩过）。打包脚本会检查并补上 BOM。

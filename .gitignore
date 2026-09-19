@@ -20,3 +20,9 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# 部署产物与离线安装包（deploy\ 下的脚本进 Git，产物和二进制不进）
+build/
+agent-deploy-package.zip
+*.msi
+python-3.*-amd64.exe

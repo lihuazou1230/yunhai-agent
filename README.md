@@ -35,19 +35,41 @@ $env:HF_ENDPOINT = 'https://hf-mirror.com'
 
 ```powershell
 .venv\Scripts\python -m ruff check .          # lint
-.venv\Scripts\python -m pytest -q             # 99 例单测：哈希向量 + 假 LLM，不下载模型
+.venv\Scripts\python -m pytest -q             # 140 例单测：哈希向量 + 假 LLM，不下载模型
 ```
 
 CI（`.github/workflows/ci.yml`）装的是 `requirements-dev.txt`——**刻意不含 torch / sentence-transformers**：
 单测全程用零依赖哈希向量与假 LLM，把 400MB+ 的运行时拖进每次流水线只会让它慢三分钟，
 而测的东西一点没变。真机要跑 bge 语义检索时仍按 `requirements.txt` 装。
 
+## 部署到自有服务器（IIS 同源子应用 `/yhai`）
+
+线上页面 `http://124.220.159.58/workspace/` 要能用 AI 助手，agent 就得跑在**服务器**上：
+页面里配 `127.0.0.1:8000` 指的是**访问者自己的电脑**，而且 Chrome 142+ 的
+[Local Network Access](https://developer.chrome.google.cn/blog/local-network-access?hl=zh-tw)
+不允许公网 HTTP 页面访问回环地址（连申请权限的资格都没有）。
+正解是复用 80 端口，把它挂成同源子路径。
+
+```powershell
+# 本机打部署包 → RDP 拖进服务器 → 右键 install.ps1 运行（管理员）
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy\build-agent-package.ps1
+```
+
+- 形态：`IIS 子应用 /yhai` →（URL Rewrite + ARR 反代）→ `127.0.0.1:8000` 的 uvicorn（计划任务常驻）
+- 服务器上**不装 torch**：走 `requirements-server.txt`（去掉 sentence-transformers）+ `EMBEDDER=api`（SiliconFlow bge-m3）
+- **不用 HttpPlatformHandler**：它 v1.2 自带 8KB 输出缓冲且无法关闭，会把 SSE 憋成"一次性吐"
+- **Server 2012 R2 上 Python 最高 3.12**（3.13+ 要求 Win10+），且需要 UCRT
+- 挂在子路径下由 `AGENT_URL_PREFIX` 剥前缀（`app/url_prefix.py`，纯 ASGI 中间件，不破坏流式）；本地不设 = 空操作
+
+完整步骤、验收清单（含 SSE 端到端实测）与排障表见 [`deploy/部署说明.md`](deploy/部署说明.md)。
+
 ## 目录结构
 
 ```
 app/
-├── main.py            FastAPI 应用装配（CORS / 异常翻译 / 路由）
+├── main.py            FastAPI 应用装配（CORS / 异常翻译 / 路由 / 子路径前缀）
 ├── config.py          配置（.env -> Settings），Key 只在这里出现
+├── url_prefix.py      挂在子路径下时的前缀剥离（纯 ASGI 中间件，不缓冲流式响应）
 ├── runtime.py         运行时容器：模型、存储、管道、工具，全局懒加载
 ├── sse.py             SSE 事件协议（token/tool_call/tool_result/citation/proposal/done/error）
 ├── schemas.py         接口出入参
@@ -81,6 +103,8 @@ scripts/
 ├── check_env_file.py  .env 行尾/字段自检（CR-only 行尾会坑 PowerShell）
 └── check_llm.py       LLM Key 冒烟测试
 eval/                  评测语料（docs/ 三份样本 + 库内/库外问题集）与三份报告
+deploy/                服务器部署（IIS 同源子应用 /yhai）：install.ps1 + web.config + 打包脚本 + 部署说明.md
+requirements-server.txt  服务器形态依赖（不含 torch，向量走 API）
 tests/                 pytest（默认用哈希向量 + 假 LLM，CI 不下载模型）
 ```
 
