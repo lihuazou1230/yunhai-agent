@@ -50,8 +50,8 @@
     -PythonExe C:\...\python.exe   指定已装好的 Python（给了就不下载）
     -PythonVersion 3.12.10        要下载安装的 Python 版本（3.10~3.12；3.13+ 不支持 2012 R2）
     -PythonTargetDir C:\Python312 安装到的目录（仅下载安装时用）
-    -PipIndexUrl https://pypi.tuna.tsinghua.edu.cn/simple
-                                  换 pip 源（国内服务器建议给；默认 pypi.org 可能慢到像卡死）
+    -PipIndexUrl <url>            pip 源。**默认清华镜像**（国内服务器访问 pypi.org 常慢到像卡死）；
+                                  想回到官方源就传 -PipIndexUrl ''
     -LlmApiKey / -LlmBaseUrl / -LlmModel              生成侧（默认 DeepSeek）
     -EmbedApiKey / -EmbedApiBaseUrl / -EmbedApiModel  向量侧（默认 SiliconFlow bge-m3）
       提示：Key 这几个参数**能不用就不用** —— 省掉时脚本会交互式提示你粘贴，那才是推荐路径。
@@ -72,7 +72,7 @@ param(
     [string]$PythonExe,
     [string]$PythonVersion = '3.12.10',
     [string]$PythonTargetDir = 'C:\Python312',
-    [string]$PipIndexUrl,
+    [string]$PipIndexUrl = 'https://pypi.tuna.tsinghua.edu.cn/simple',
     [string]$LlmApiKey,
     [string]$LlmBaseUrl = 'https://api.deepseek.com/v1',
     [string]$LlmModel = 'deepseek-chat',
@@ -275,8 +275,7 @@ function Install-Venv {
         $common.Add('-i'); $common.Add($IndexUrl)
         Write-Info "pip 源：$IndexUrl"
     } else {
-        Write-Info 'pip 源：默认 pypi.org'
-        Write-Info '    （国内服务器上可能很慢；Ctrl+C 后加 -PipIndexUrl https://pypi.tuna.tsinghua.edu.cn/simple 重跑会快很多）'
+        Write-Info 'pip 源：官方 pypi.org（-PipIndexUrl 被显式留空）'
     }
     $pipArgs = $common.ToArray()
 
