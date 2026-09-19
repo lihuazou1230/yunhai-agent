@@ -131,8 +131,8 @@ async def test_ask_with_hit_streams_citation_then_tokens(
     assert detail["messages"][1]["citations"][0]["source"] == "手册.md"
     assert detail["messages"][1]["meta"]["fallback"] == "kb"
 
-    # 送进模型的上下文里带着检索到的原文
-    assert "分块默认块长" in stub_llm.calls[0][1]["content"]
+    # 送进模型的上下文里带着检索到的原文（StubLLM 现在记录的是 {messages, tools} 结构）
+    assert "分块默认块长" in stub_llm.calls[0]["messages"][1]["content"]
 
 
 async def test_ask_reuses_given_session(runtime: Runtime, sample_md: str):
@@ -158,7 +158,7 @@ async def test_fallback_bare_calls_llm_with_warning(runtime: Runtime, stub_llm, 
     runtime.kb.ingest("手册.md", sample_md.encode("utf-8"))
     events = await collect(runtime, "世界杯冠军是哪支球队？", fallback_mode="bare")
     assert events[-1][1]["fallback"] == "bare"
-    assert "不基于知识库" in stub_llm.calls[0][0]["content"]
+    assert "不基于知识库" in stub_llm.calls[0]["messages"][0]["content"]
     assert text_of(events)
 
 

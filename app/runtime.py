@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.agent.builtin import build_builtin_tools
+from app.agent.react import AgentLoop
+from app.agent.runs import RunStore
+from app.agent.tools import ToolRegistry as AgentToolRegistry
 from app.config import Settings, get_settings
 from app.jobs import JobRegistry
 from app.rag.embedder import Embedder, HashingEmbedder, build_embedder
@@ -19,7 +23,7 @@ from app.rag.retriever import Retriever
 from app.rag.store import VectorStore
 from app.sessions import SessionStore
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 
 @dataclass
@@ -33,6 +37,9 @@ class Runtime:
     sessions: SessionStore
     kb: KnowledgeBase
     ask: AskPipeline
+    runs: RunStore = field(default=None)  # type: ignore[assignment]
+    tools: AgentToolRegistry = field(default=None)  # type: ignore[assignment]
+    agent: AgentLoop = field(default=None)  # type: ignore[assignment]
     jobs: JobRegistry = field(default_factory=JobRegistry)
     degraded_reason: str = ""
 
@@ -58,7 +65,11 @@ class Runtime:
         sessions = SessionStore(settings.sessions_db)
         kb = KnowledgeBase(settings, embedder, store, lexical)
         ask = AskPipeline(settings, retriever, llm, sessions, kb)
-        return cls(
+        runs = RunStore(settings.agent_runs_db)
+        runs.purge_expired(settings.agent_run_ttl_s)
+        registry = AgentToolRegistry()
+        agent = AgentLoop(settings, llm, registry, sessions, runs)
+        runtime = cls(
             settings=settings,
             embedder=embedder,
             store=store,
@@ -68,8 +79,15 @@ class Runtime:
             sessions=sessions,
             kb=kb,
             ask=ask,
+            runs=runs,
+            tools=registry,
+            agent=agent,
             degraded_reason=degraded,
         )
+        # 内置工具需要 retriever，所以在 runtime 组装好之后再注入（可插拔：替换 registry 即可换掉整套工具）
+        for tool in build_builtin_tools(runtime):
+            registry.register(tool)
+        return runtime
 
     def health(self) -> dict:
         return {

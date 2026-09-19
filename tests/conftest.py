@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -24,12 +25,23 @@ from app.runtime import Runtime, set_runtime  # noqa: E402
 
 
 class StubLLM(LLMClient):
-    """假 LLM：按预置片段逐块吐字，可切换成抛错。"""
+    """假 LLM：既能按预置片段逐块吐字，也能按**脚本**演工具调用。
 
-    def __init__(self, pieces: tuple[str, ...] = ("分块默认 ", "500 ", "字符。", "[1]"), fail: str = ""):
+    `script` 的每一项是一轮：`{"content": "...", "tool_calls": [{"name": ..., "arguments": {...}}], "tokens": N}`。
+    脚本用完后回落到 `pieces`（纯文本）。第十一阶段的护栏用例靠它构造
+    "反复调用同一个失败工具""token 爆预算"这类场景——真模型不配合的事情，假模型必须配合。
+    """
+
+    def __init__(
+        self,
+        pieces: tuple[str, ...] = ("分块默认 ", "500 ", "字符。", "[1]"),
+        fail: str = "",
+        script: list[dict] | None = None,
+    ):
         self.pieces = list(pieces)
         self.fail = fail
-        self.calls: list[list[dict[str, str]]] = []
+        self.script = list(script or [])
+        self.calls: list[dict] = []
 
     @property
     def configured(self) -> bool:  # type: ignore[override]
@@ -40,11 +52,39 @@ class StubLLM(LLMClient):
         return "stub-model"
 
     async def stream_chat(self, messages):  # type: ignore[override]
-        self.calls.append(messages)
+        self.calls.append({"messages": messages, "tools": None})
         if self.fail == "boom":
             raise LLMError("stub 生成失败")
         for piece in self.pieces:
             yield piece
+
+    async def stream_with_tools(self, messages, tools, result):  # type: ignore[override]
+        self.calls.append({"messages": messages, "tools": tools})
+        if self.fail == "boom":
+            raise LLMError("stub 生成失败")
+
+        turn = self.script.pop(0) if self.script else {"content": "".join(self.pieces)}
+        result.total_tokens = int(turn.get("tokens", 12))
+        for piece in _chunks(str(turn.get("content", ""))):
+            result.content += piece
+            yield piece
+        for index, call in enumerate(turn.get("tool_calls") or []):
+            result.absorb_tool_call_delta(
+                {
+                    "index": index,
+                    "id": call.get("id", f"call_{index}"),
+                    "function": {
+                        "name": call["name"],
+                        "arguments": json.dumps(call.get("arguments", {}), ensure_ascii=False),
+                    },
+                }
+            )
+        result.finish_tool_calls()
+        result.finish_reason = "tool_calls" if result.tool_calls else "stop"
+
+
+def _chunks(text: str, size: int = 6) -> list[str]:
+    return [text[i : i + size] for i in range(0, len(text), size)] or [""]
 
 
 @pytest.fixture

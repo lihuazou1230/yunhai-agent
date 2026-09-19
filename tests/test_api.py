@@ -1,4 +1,4 @@
-"""HTTP 接口测试（TestClient，走真路由、真 SSE、真会话库）。"""
+﻿"""HTTP 接口测试（TestClient，走真路由、真 SSE、真会话库）。"""
 
 from __future__ import annotations
 
@@ -131,7 +131,7 @@ def test_reset_knowledge(client, sample_md):
 
 def test_ask_streams_sse_with_citations(client, sample_md):
     upload(client, "手册.md", sample_md.encode("utf-8"))
-    response = client.post("/api/ask", json={"question": "分块默认块长是多少？"})
+    response = client.post("/api/ask", json={"question": "分块默认块长是多少？", "strategy": "rag"})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.headers["x-accel-buffering"] == "no"
@@ -145,7 +145,7 @@ def test_ask_streams_sse_with_citations(client, sample_md):
 
 def test_ask_out_of_scope_refuses(client, sample_md):
     upload(client, "手册.md", sample_md.encode("utf-8"))
-    events = parse_sse(client.post("/api/ask", json={"question": "世界杯冠军是谁？"}).text)
+    events = parse_sse(client.post("/api/ask", json={"question": "世界杯冠军是谁？", "strategy": "rag"}).text)
     assert events[-1][1]["fallback"] == "refuse"
     assert not any(kind == "citation" for kind, _ in events)
 
@@ -163,7 +163,7 @@ def test_ask_rejects_bad_mode(client):
 
 def test_session_endpoints(client, sample_md):
     upload(client, "手册.md", sample_md.encode("utf-8"))
-    done = parse_sse(client.post("/api/ask", json={"question": "分块默认块长是多少？"}).text)[-1][1]
+    done = parse_sse(client.post("/api/ask", json={"question": "分块默认块长是多少？", "strategy": "rag"}).text)[-1][1]
     session_id = done["session_id"]
 
     listed = client.get("/api/sessions").json()["sessions"]
@@ -186,11 +186,11 @@ def test_unknown_session_returns_404(client):
 
 def test_ask_can_continue_an_existing_session(client, sample_md):
     upload(client, "手册.md", sample_md.encode("utf-8"))
-    first = parse_sse(client.post("/api/ask", json={"question": "分块默认块长是多少？"}).text)[-1][1]
+    first = parse_sse(client.post("/api/ask", json={"question": "分块默认块长是多少？", "strategy": "rag"}).text)[-1][1]
     second = parse_sse(
         client.post(
             "/api/ask",
-            json={"question": "向量是多少维的？", "session_id": first["session_id"]},
+            json={"question": "向量是多少维的？", "session_id": first["session_id"], "strategy": "rag"},
         ).text
     )[-1][1]
     assert second["session_id"] == first["session_id"]
@@ -201,7 +201,7 @@ def test_ask_can_continue_an_existing_session(client, sample_md):
 def test_ask_with_lexical_mode(client, sample_md):
     upload(client, "手册.md", sample_md.encode("utf-8"))
     events = parse_sse(
-        client.post("/api/ask", json={"question": "余弦距离 阈值", "mode": "lexical"}).text
+        client.post("/api/ask", json={"question": "余弦距离 阈值", "mode": "lexical", "strategy": "rag"}).text
     )
     assert events[-1][1]["fallback"] == "kb"
 

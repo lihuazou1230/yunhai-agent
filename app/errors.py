@@ -62,3 +62,10 @@ class LLMError(AgentError):
 class SessionNotFound(AgentError):
     status_code = 404
     code = "session_not_found"
+
+
+class RunNotFound(AgentError):
+    """Agent 的待续跑状态不存在/已过期（client 工具回环用）。"""
+
+    status_code = 404
+    code = "run_not_found"

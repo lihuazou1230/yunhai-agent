@@ -16,10 +16,31 @@ FallbackMode = Literal["refuse", "bare", "web"]
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000, description="用户问题")
     session_id: str | None = Field(default=None, description="留空则新建会话")
-    mode: RetrievalMode = Field(default="semantic", description="检索策略")
+    mode: RetrievalMode = Field(default="semantic", description="检索策略（search_knowledge 也用它）")
     fallback_mode: FallbackMode | None = Field(default=None, description="留空用后端默认")
     top_k: int | None = Field(default=None, ge=1, le=20)
     threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    strategy: Literal["agent", "rag"] = Field(
+        default="agent",
+        description="agent=ReAct 循环 + 工具（第十一阶段默认）；rag=第十阶段的固定检索直答链路",
+    )
+    tools_enabled: bool = Field(default=True, description="临时关掉工具（排障用，也让纯对话可验证）")
+
+
+class ToolResultPayload(BaseModel):
+    """前端执行完 client 工具后回传的观察结果。"""
+
+    tool_call_id: str = Field(min_length=1)
+    name: str = ""
+    ok: bool = True
+    summary: str = Field(default="", max_length=4000, description="给模型看的文本观察结果")
+    result: Any = None
+    error: str = ""
+
+
+class ResumeRequest(BaseModel):
+    run_id: str = Field(min_length=1, description="上一轮 done 事件里返回的 run_id")
+    results: list[ToolResultPayload] = Field(default_factory=list)
 
 
 class DocumentInfo(BaseModel):

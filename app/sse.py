@@ -47,6 +47,52 @@ def citation_event(citation: dict[str, Any]) -> str:
     return sse(CITATION, citation)
 
 
+def tool_call_event(
+    call_id: str,
+    name: str,
+    arguments: dict[str, Any],
+    *,
+    executor: str = "server",
+    status: str = "running",
+) -> str:
+    """工具调用开始 / 需要客户端执行。
+
+    `status` 取值：`running`（服务端正在执行）、`awaiting_client`（等前端在工作台数据上执行）。
+    """
+    return sse(
+        TOOL_CALL,
+        {"id": call_id, "name": name, "arguments": arguments, "executor": executor, "status": status},
+    )
+
+
+def tool_result_event(
+    call_id: str,
+    name: str,
+    ok: bool,
+    *,
+    summary: str = "",
+    error: str = "",
+    citations: list[dict[str, Any]] | None = None,
+    meta: dict[str, Any] | None = None,
+) -> str:
+    return sse(
+        TOOL_RESULT,
+        {
+            "id": call_id,
+            "name": name,
+            "ok": ok,
+            "summary": summary,
+            "error": error,
+            "citations": citations or [],
+            "meta": meta or {},
+        },
+    )
+
+
+def proposal_event(proposal: dict[str, Any]) -> str:
+    return sse(PROPOSAL, proposal)
+
+
 def done_event(**payload: Any) -> str:
     return sse(DONE, payload)
 

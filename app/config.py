@@ -71,6 +71,18 @@ class Settings(BaseSettings):
     # 兜底三模式：refuse（默认拒答）/ bare（裸答并标注）/ web（联网搜索，阶段后置）
     fallback_mode: str = "refuse"
 
+    # ---------- Agent 内核（第十一阶段：ReAct 循环与护栏）----------
+    # 护栏三件套：轮数上限 + token 预算 + 工具超时；外加"同一工具连续失败几次就收口"的熔断
+    agent_max_rounds: int = 8
+    agent_token_budget: int = 12000
+    agent_tool_timeout_s: float = 10.0
+    agent_run_timeout_s: float = 120.0
+    agent_max_tool_failures: int = 3
+    # 回填给模型的历史消息条数（**已剔除轻量闲聊**，见 11.4）
+    agent_history_messages: int = 6
+    # 待续跑状态（等前端执行 client 工具）保留多久
+    agent_run_ttl_s: int = 3600
+
     # ---------- 分块 ----------
     chunk_size: int = 500
     chunk_overlap: int = 80
@@ -116,6 +128,10 @@ class Settings(BaseSettings):
     @property
     def sessions_db(self) -> Path:
         return self.data_dir / "sessions.db"
+
+    @property
+    def agent_runs_db(self) -> Path:
+        return self.data_dir / "agent_runs.db"
 
     @property
     def llm_configured(self) -> bool:

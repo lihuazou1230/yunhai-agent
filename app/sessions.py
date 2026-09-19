@@ -100,6 +100,30 @@ class SessionStore:
                 return session_id
         return self.create_session(title=question.strip()[:20], mode=mode)["id"]
 
+    def tag_last_user_message(self, session_id: str, kind: str) -> None:
+        """给最近一条用户消息打上 kind 标记。
+
+        用途（11.4）：这一轮被判定为**轻量闲聊**时，把用户那句也标成 `chat`——
+        否则"闲聊不进任务上下文"只管住了回答，用户那半句照样会被回填给下一轮。
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "select id, meta from messages where session_id = ? and role = 'user' order by rowid desc limit 1",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                return
+            try:
+                meta = json.loads(row["meta"] or "{}")
+            except json.JSONDecodeError:
+                meta = {}
+            meta["kind"] = kind
+            self._conn.execute(
+                "update messages set meta = ? where id = ?",
+                (json.dumps(meta, ensure_ascii=False), row["id"]),
+            )
+            self._conn.commit()
+
     # ---------- 消息 ----------
 
     def add_message(

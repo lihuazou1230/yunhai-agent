@@ -33,10 +33,15 @@ WEB_HINT = (
 )
 
 
-def build_context(hits: list[Retrieved]) -> str:
-    """把命中块拼成带编号的上下文——编号就是后端发给前端的 citation.index。"""
+def build_context(hits: list[Retrieved], *, start_index: int = 1) -> str:
+    """把命中块拼成带编号的上下文——编号就是后端发给前端的 citation.index。
+
+    `start_index` 给 Agent 的多次检索用：第二轮检索的编号要接着上一轮往下排，
+    否则模型写 [1] 时你分不清它指的是哪一次检索的片段。
+    """
     blocks: list[str] = []
-    for index, hit in enumerate(hits, start=1):
+    for offset, hit in enumerate(hits):
+        index = start_index + offset
         chunk = hit.chunk
         location = f"第 {chunk.page} 页" if chunk.page else f"第 {chunk.chunk_index + 1} 块"
         blocks.append(f"[{index}] 来源：{chunk.source}（{location}）\n{chunk.text}")
@@ -56,6 +61,6 @@ def build_messages(question: str, hits: list[Retrieved], *, bare: bool = False) 
     ]
 
 
-def citations_of(hits: list[Retrieved]) -> list[dict[str, Any]]:
+def citations_of(hits: list[Retrieved], *, start_index: int = 1) -> list[dict[str, Any]]:
     """引用块（与 [编号] 一一对应）。"""
-    return [hit.as_citation(index) for index, hit in enumerate(hits, start=1)]
+    return [hit.as_citation(start_index + offset) for offset, hit in enumerate(hits)]
