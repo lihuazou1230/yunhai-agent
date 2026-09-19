@@ -52,6 +52,9 @@
     -PythonTargetDir C:\Python312 安装到的目录（仅下载安装时用）
     -LlmApiKey / -LlmBaseUrl / -LlmModel              生成侧（默认 DeepSeek）
     -EmbedApiKey / -EmbedApiBaseUrl / -EmbedApiModel  向量侧（默认 SiliconFlow bge-m3）
+      提示：Key 这几个参数**能不用就不用** —— 省掉时脚本会交互式提示你粘贴，那才是推荐路径。
+      用参数传的话，整条命令行会留在 PowerShell 的 ConsoleHost_history.txt 里（明文）。
+      真传过就事后 Clear-History 并删掉那个历史文件（见「部署说明.md」第六节）。
     -SkipArrInstall               跳过 URL Rewrite / ARR 的检测与安装
     -SkipSelfCheck                跳过第 4 步的离线自检（不建议）
     -Force                        重建 venv、重写 .env
