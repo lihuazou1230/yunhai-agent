@@ -386,6 +386,10 @@ function Test-AgentDirectly {
     <#
       上 IIS 之前先把服务直接跑起来探活：依赖缺没缺、Key 对不对（真编码一次），
       都能在这里暴露，省得挂上 IIS 之后对着 502 猜。
+
+      两种"端口已被占用"的情形都要照顾到（重跑脚本时很常见）：
+        1) 占着 8000 的**就是本服务**（上一轮已经把常驻任务拉起来了）→ 直接探活，跳过自检；
+        2) 占着 8000 的是**别的程序** → 换一个空闲端口做自检，别拿 Errno 10048 当"部署失败"。
     #>
     param([string]$Dir, [string]$VenvPython, [string]$Prefix, [int]$AgentPort)
     # 日志写进应用的 logs\（一定存在且可写）。不要写 %TEMP%：个别服务器环境下
@@ -395,9 +399,41 @@ function Test-AgentDirectly {
     $logOut = Join-Path $selfCheckDir 'selfcheck.log'
     $logErr = Join-Path $selfCheckDir 'selfcheck.err.log'
 
-    Write-Info "临时起一次 127.0.0.1:$AgentPort 探活..."
+    # 情形 1：端口上已经有本服务在跑（重跑时最常见），不必也不该再起一个
+    foreach ($probePath in @("$Prefix/api/health", '/api/health')) {
+        try {
+            $alive = Invoke-RestMethod -Uri "http://127.0.0.1:$AgentPort$probePath" -TimeoutSec 5
+            Write-Ok "$AgentPort 上已经有本服务在跑（status=$($alive.status) embedder=$($alive.embedder)/$($alive.embedder_model)），跳过自检"
+            if (-not $alive.llm_configured) { Write-Warn 'LLM Key 未配置：问答会报「后端未配置 LLM Key」' }
+            return
+        } catch { }
+    }
+
+    # 情形 2：端口被别的程序占着 → 换空闲端口自检
+    $probePort = $null
+    foreach ($candidate in @($AgentPort, 8791, 8792, 8899, 8901)) {
+        $listener = $null
+        try {
+            $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $candidate)
+            $listener.Start()
+            $listener.Stop()
+            $probePort = $candidate
+            break
+        } catch {
+            if ($listener) { try { $listener.Stop() } catch { } }
+        }
+    }
+    if (-not $probePort) {
+        Write-Warn '找不到空闲端口做离线自检，跳过（要显式跳过可用 -SkipSelfCheck；这步只是提前暴露依赖/Key 问题）'
+        return
+    }
+    if ($probePort -ne $AgentPort) {
+        Write-Warn "$AgentPort 被别的程序占着，自检改用 $probePort（常驻任务之后仍会监听 $AgentPort）"
+    }
+
+    Write-Info "临时起一次 127.0.0.1:$probePort 探活..."
     $proc = Start-Process -FilePath $VenvPython `
-        -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', "$AgentPort") `
+        -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', "$probePort") `
         -WorkingDirectory $Dir -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $logOut -RedirectStandardError $logErr
 
@@ -407,21 +443,24 @@ function Test-AgentDirectly {
             Start-Sleep -Seconds 2
             if ($proc.HasExited) { break }
             try {
-                $health = Invoke-RestMethod -Uri "http://127.0.0.1:$AgentPort$Prefix/api/health" -TimeoutSec 5
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:$probePort$Prefix/api/health" -TimeoutSec 5
                 break
             } catch { }
         }
         if (-not $health) {
             $tail = ''
             if (Test-Path $logErr) { $tail = (Get-Content $logErr -Tail 20 -Encoding UTF8) -join "`n" }
-            throw "服务没起来。最后几行日志：`n$tail"
+            if ($tail -match '10048|address already in use|address already') {
+                throw "自检端口 $probePort 仍被占用。用 -SkipSelfCheck 跳过自检重跑即可（服务装好后由常驻任务监听 $AgentPort）。日志：`n$tail"
+            }
+            throw "服务没起来。日志在 $logErr，最后几行：`n$tail"
         }
         Write-Ok "health：status=$($health.status) embedder=$($health.embedder)/$($health.embedder_model) url_prefix=$($health.url_prefix)"
         if (-not $health.llm_configured) { Write-Warn 'LLM Key 未配置：问答会报「后端未配置 LLM Key」' }
 
         # 真编码一次：验证 EMBED_API_KEY 真的可用（health 本身不调外部 API）
         try {
-            $warm = Invoke-RestMethod -Uri "http://127.0.0.1:$AgentPort$Prefix/api/health/embedder" -TimeoutSec 60
+            $warm = Invoke-RestMethod -Uri "http://127.0.0.1:$probePort$Prefix/api/health/embedder" -TimeoutSec 60
             Write-Ok "向量自检通过：$($warm.embedder) dim=$($warm.dim)"
         } catch {
             Write-Warn "向量自检失败：$($_.Exception.Message)（检查 EMBED_API_KEY 是否有效、服务器能否访问 $EmbedApiBaseUrl）"
